@@ -1,0 +1,8 @@
+{
+  "name": "NativeOctreePlugin",
+  "author": "ShirleyNekoDev",
+  "main": "${pluginClass}",
+  "version": "${version}",
+  "targetVersion": "${chunkyVersion}",
+  "description": "Native octrees"
+}
