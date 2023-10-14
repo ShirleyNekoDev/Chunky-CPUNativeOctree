@@ -3,9 +3,10 @@ import com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask
 plugins {
     java
     application
-    id("org.openjfx.javafxplugin") version "0.0.13"
+    id("org.openjfx.javafxplugin") version "0.1.0"
 
-    id("com.github.ben-manes.versions") version "0.46.0"
+    id("com.github.ben-manes.versions") version "0.49.0"
+    id("se.ascp.gradle.gradle-versions-filter") version "0.1.16"
     idea
 }
 
@@ -39,7 +40,9 @@ java {
 
 dependencies {
     implementation("se.llbit:chunky-core:$chunkyVersion") {
-        isChanging = true
+        if (chunkyVersion.endsWith("SNAPSHOT")) {
+            isChanging = true
+        }
     }
 }
 
@@ -49,7 +52,7 @@ application {
 }
 
 javafx {
-    version = "11.0.2"
+    version = "11.0.2" // aligned with Chunky
     modules = listOf("javafx.controls", "javafx.fxml")
 }
 
@@ -106,9 +109,9 @@ tasks {
     }
 
     withType<DependencyUpdatesTask> {
-        val unstable = Regex("^.*?(?:alpha|beta|unstable|ea|rc).*\$", RegexOption.IGNORE_CASE)
-        rejectVersionIf {
-            candidate.version.matches(unstable)
+        gradleReleaseChannel = "current"
+        versionsFilter {
+            exclusiveQualifiers.addAll("ea")
         }
     }
 }
