@@ -16,12 +16,18 @@ class ZigLib {
 		pointer: *packed_octree.OctreeNode,
 	};
 	*/
-	final static MemoryLayout OCTREE_DATA = MemoryLayout.structLayout(ValueLayout.JAVA_LONG.withName("capacity"), ValueLayout.JAVA_LONG.withName("length"), ValueLayout.ADDRESS.withName("pointer"));
+	final static MemoryLayout OCTREE_DATA = MemoryLayout.structLayout(
+		ValueLayout.JAVA_LONG.withName("capacity"),
+		ValueLayout.JAVA_LONG.withName("length"),
+		ValueLayout.ADDRESS.withName("pointer")
+	);
+	final static AddressLayout UNBOUNDED_POINTER = ValueLayout.ADDRESS
+		.withTargetLayout(MemoryLayout.sequenceLayout(Long.MAX_VALUE, ValueLayout.JAVA_BYTE));
 
 	public ZigLib(String libraryName) {
-		var lib = new LibraryBinding(libraryName, Playground.class.getClassLoader());
-		version = lib.findHandle("version", FunctionDescriptor.of(ValueLayout.ADDRESS));
-		getError = lib.findHandle("get_error", FunctionDescriptor.of(ValueLayout.ADDRESS));
+		var lib = new LibraryBinding(libraryName, ZigLib.class.getClassLoader());
+		version = lib.findHandle("version", FunctionDescriptor.of(UNBOUNDED_POINTER));
+		getError = lib.findHandle("get_error", FunctionDescriptor.of(UNBOUNDED_POINTER));
 		createOctree = lib.findHandle("create_octree", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
 		destroyOctree = lib.findHandle("destroy_octree", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 		getNodeCount = lib.findHandle("get_node_count", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
@@ -38,9 +44,15 @@ class ZigLib {
 			ValueLayout.JAVA_INT,
 			ValueLayout.JAVA_INT
 		));
-		setNode = lib.findHandle("set_node",
-			FunctionDescriptor.of(ValueLayout.JAVA_BOOLEAN, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
-		);
+		setNode = lib.findHandle("set_node", FunctionDescriptor.of(
+			ValueLayout.JAVA_BOOLEAN,
+
+			ValueLayout.ADDRESS,
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_INT,
+			ValueLayout.JAVA_INT
+		));
 	}
 
 	// pub export fn version() [*c]const u8
@@ -48,7 +60,7 @@ class ZigLib {
 
 	public String version() {
 		try {
-			return ((MemoryAddress) version.invokeExact()).getUtf8String(0);
+			return ((MemorySegment) version.invokeExact()).getUtf8String(0);
 		} catch(Throwable e) {
 			throw new ZigError(e);
 		}
@@ -59,7 +71,7 @@ class ZigLib {
 
 	public String getError() {
 		try {
-			return ((MemoryAddress) getError.invokeExact()).getUtf8String(0);
+			return ((MemorySegment) getError.invokeExact()).getUtf8String(0);
 		} catch(Throwable e) {
 			throw new ZigError(e);
 		}
@@ -68,14 +80,14 @@ class ZigLib {
 	// pub export fn create_octree(depth: c_int) ?*octree.PackedOctree
 	private final MethodHandle createOctree;
 
-	public MemoryAddress createOctree(int depth) {
-		MemoryAddress result;
+	public MemorySegment createOctree(int depth) {
+		MemorySegment result;
 		try {
-			result = (MemoryAddress) createOctree.invokeExact(depth);
+			result = (MemorySegment) createOctree.invokeExact(depth);
 		} catch(Throwable e) {
 			throw new ZigError(e);
 		}
-		if(result.toRawLongValue() == 0)
+		if(result.address() == 0)
 			throw new ZigError(getError());
 		return result;
 	}
@@ -83,7 +95,7 @@ class ZigLib {
 	// pub export fn destroy_octree(octree: *octree.PackedOctree) void
 	private final MethodHandle destroyOctree;
 
-	public void destroyOctree(MemoryAddress octree) {
+	public void destroyOctree(MemorySegment octree) {
 		try {
 			destroyOctree.invoke(octree);
 		} catch(Throwable e) {
@@ -94,7 +106,7 @@ class ZigLib {
 	// pub export fn get_node_count(octree: *const PackedOctree) c_int
 	private final MethodHandle getNodeCount;
 
-	public int getNodeCount(MemoryAddress octree) {
+	public int getNodeCount(MemorySegment octree) {
 		try {
 			return (int) getNodeCount.invoke(octree);
 		} catch(Throwable e) {
@@ -105,16 +117,17 @@ class ZigLib {
 	// pub export fn get_octree_data(octree: *PackedOctree) OctreeData
 	private final MethodHandle getOctreeData;
 
-	public ByteBuffer getOctreeData(MemorySession session, MemoryAddress octree) {
+	public ByteBuffer getOctreeData(Arena arena, MemorySegment octree) {
 		try {
-			var octreeData = (MemorySegment) getOctreeData.invoke(session, octree);
+			var octreeData = (MemorySegment) getOctreeData.invoke(arena, octree);
 
 			long capacity = octreeData.get(ValueLayout.JAVA_LONG, 0);
 			long length = octreeData.get(ValueLayout.JAVA_LONG, 8);
-			MemoryAddress pointer = octreeData.get(ValueLayout.ADDRESS, 16);
-			System.out.println("OctreeData: capacity=" + capacity + " length=" + length + " pointer=" + pointer);
+			MemorySegment pointer = octreeData.get(ValueLayout.ADDRESS, 16);
+			System.out.println(STR."OctreeData: capacity=\{capacity} length=\{length} pointer=@\{Long.toUnsignedString(pointer.address(), 16)}");
 
-			var treeData = MemorySegment.ofAddress(pointer, capacity * Integer.BYTES, session);
+			var treeDataPtr = MemorySegment.ofAddress(pointer.address());
+			var treeData = treeDataPtr.reinterpret(capacity * Integer.BYTES);
 			var buf = treeData.asByteBuffer();
 			return buf.slice(0, (int) (length * Integer.BYTES)).order(ByteOrder.LITTLE_ENDIAN);
 		} catch(Throwable e) {
@@ -129,7 +142,7 @@ class ZigLib {
 	//) void
 	private final MethodHandle updateOctree;
 
-	public void updateOctree(MemoryAddress octree, int x, int y, int z, MemorySegment data) {
+	public void updateOctree(MemorySegment octree, int x, int y, int z, MemorySegment data) {
 		boolean success;
 		try {
 			success = (boolean) updateOctree.invoke(octree, x, y, z, data.address(), (int) (data.byteSize() / Short.BYTES));
@@ -147,7 +160,7 @@ class ZigLib {
 	//) void
 	private final MethodHandle importOctree;
 
-	public void importOctree(MemoryAddress octree, MemorySegment data) {
+	public void importOctree(MemorySegment octree, MemorySegment data) {
 		boolean success;
 		try {
 			success = (boolean) importOctree.invoke(octree, data.address(), (int) (data.byteSize() / Integer.BYTES));
@@ -164,7 +177,7 @@ class ZigLib {
 	//) PackedOctree.NodeDataWithLevel
 	private final MethodHandle getNodeWithLevel;
 
-	public int getNode(MemoryAddress octree, int x, int y, int z) {
+	public int getNode(MemorySegment octree, int x, int y, int z) {
 		try {
 			var nodeDataWithLevel = (long) getNodeWithLevel.invoke(octree, x, y, z);
 			return (int) (nodeDataWithLevel & 0x7FFFFFFFL);
@@ -173,7 +186,7 @@ class ZigLib {
 		}
 	}
 
-	public void getNodeWithLevel(MemoryAddress octree, IntIntMutablePair nodeDataAndLevel, int x, int y, int z) {
+	public void getNodeWithLevel(MemorySegment octree, IntIntMutablePair nodeDataAndLevel, int x, int y, int z) {
 		try {
 			var nodeDataWithLevel = (long) getNodeWithLevel.invoke(octree, x, y, z);
 			nodeDataAndLevel
@@ -191,7 +204,7 @@ class ZigLib {
 	//) bool
 	private final MethodHandle setNode;
 
-	public void setNode(MemoryAddress octree, int x, int y, int z, int data) {
+	public void setNode(MemorySegment octree, int x, int y, int z, int data) {
 		boolean success;
 		try {
 			success = (boolean) setNode.invoke(octree, x, y, z, data);

@@ -17,7 +17,7 @@ _(Personal goals: learn Zig, efficient memory management, optimizations for mode
 ## Requirements
 
 - Chunky 2.5.0-snapshot builds
-- Java 19 with _JEP 424: Foreign Function & Memory API (First Preview)_
+- Java 21 with [_JEP 442: Foreign Function & Memory API (Third Preview)_](https://openjdk.org/jeps/442)
   - ⚠️ _this requires preview features to be enabled - see installation below_
 
 ### Builds / Releases
@@ -28,8 +28,8 @@ __⚠️ Disclaimer:__ Only Windows is tested at the moment.
 
 ### Build Requirements
 
-- Zig experimental 0.11.0-dev.3600+ (master)
-- *some manual build steps might be required at the moment 
+- JDK 21+
+- Zig 0.11.0+
 
 ## Installation
 

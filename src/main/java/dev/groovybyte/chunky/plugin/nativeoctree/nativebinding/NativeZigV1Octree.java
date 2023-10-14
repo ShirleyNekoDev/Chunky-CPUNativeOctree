@@ -8,9 +8,7 @@ import se.llbit.math.Octree;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.lang.foreign.MemoryAddress;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.MemorySession;
+import java.lang.foreign.*;
 import java.lang.ref.Cleaner;
 import java.nio.ByteBuffer;
 
@@ -20,23 +18,27 @@ public class NativeZigV1Octree implements Octree.OctreeImplementation {
 	final static Cleaner cleaner = Cleaner.create();
 
 	record State(
-		MemorySession session,
-		MemoryAddress address,
+		Arena arena,
+		MemorySegment address,
 		byte depth
 	) implements Runnable {
 		State(byte depth) {
 			this(
-				MemorySession.openShared(cleaner),
+				Arena.ofShared(),
 				lib.createOctree(depth),
 				depth
 			);
 		}
 
+		public Arena scope() {
+			return arena;
+		}
+
 		@Override
 		public void run() {
-			System.out.println("closing octree @" + address.toRawLongValue());
+			System.out.println("closing octree @" + address.address());
 			lib.destroyOctree(address);
-			session.close();
+			arena.close();
 		}
 	}
 
@@ -60,14 +62,14 @@ public class NativeZigV1Octree implements Octree.OctreeImplementation {
 	}
 
 	public void debugContent() {
-		ByteBuffer buf = lib.getOctreeData(state.session, state.address);
+		ByteBuffer buf = lib.getOctreeData(state.scope(), state.address);
 		System.out.print("\t[");
 		for(int i = 0; buf.hasRemaining() && i < 32; i++) {
 			int d = buf.getInt();
 			String type = switch(d >>> 28) {
+				case 0b0010 -> "ptr_abs";
+				case 0b0011 -> "ptr_rel";
 				case 0b1000 -> "data";
-				case 0b0010 -> "abs_ptr";
-				case 0b0011 -> "rel_ptr";
 				default -> "invalid";
 			};
 			System.out.print(type + "=" + Integer.toUnsignedString(d&((1<<28) - 1), 16) + ", ");

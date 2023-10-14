@@ -13,7 +13,7 @@ import java.util.NoSuchElementException;
 
 public class LibraryBinding {
 
-	final MemorySession session;
+	final Arena arena;
 	final Linker linker = Linker.nativeLinker();
 	final SymbolLookup nativeLibrary;
 
@@ -21,18 +21,18 @@ public class LibraryBinding {
 		String libraryName,
 		ClassLoader classLoader
 	) {
-		this(libraryName, classLoader, MemorySession.global());
+		this(libraryName, classLoader, Arena.global());
 	}
 	public LibraryBinding(
 		String libraryName,
 		ClassLoader classLoader,
-		MemorySession session
+		Arena arena
 	) {
-		this.session = session;
+		this.arena = arena;
 		SymbolLookup lib;
 		try {
 			System.loadLibrary(libraryName);
-			lib = SymbolLookup.libraryLookup(libraryName, session);
+			lib = SymbolLookup.libraryLookup(libraryName, arena);
 		} catch(UnsatisfiedLinkError ex) {
 			try {
 				var libraryFilename = System.mapLibraryName(libraryName);
@@ -48,7 +48,7 @@ public class LibraryBinding {
 				var nativeLibraryFile = Files.createTempFile(jarPath.getParent(), "nlib_", libraryFilename);
 				Files.copy(libraryIS, nativeLibraryFile, StandardCopyOption.REPLACE_EXISTING);
 				nativeLibraryFile.toFile().deleteOnExit();
-				lib = SymbolLookup.libraryLookup(nativeLibraryFile, session);
+				lib = SymbolLookup.libraryLookup(nativeLibraryFile, arena);
 			} catch(URISyntaxException|IOException e) {
 				throw new RuntimeException("Failed to extract native library", e);
 			} catch(UnsatisfiedLinkError e) {
@@ -60,7 +60,7 @@ public class LibraryBinding {
 
 	public MethodHandle findHandle(String functionName, FunctionDescriptor descriptor) {
 		return linker.downcallHandle(
-			nativeLibrary.lookup(functionName)
+			nativeLibrary.find(functionName)
 				.orElseThrow(() -> new NoSuchElementException("function not found \"" + functionName + "\"")),
 			descriptor
 		);
