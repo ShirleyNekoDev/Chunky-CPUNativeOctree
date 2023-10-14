@@ -13,6 +13,8 @@ zig-cache/
 *.dll.obj
 *.lib
 *.pdb
+*.so
+*.dylib
 
 *.war
 *.ear

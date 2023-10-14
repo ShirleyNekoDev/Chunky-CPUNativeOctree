@@ -66,6 +66,15 @@ tasks {
 
     val zigOutputFolder = "build/zig/out/"
     val zigCacheFolder = "build/zig/cache/"
+    val zigBuildExec = arrayOf("zig", "build")
+    val zigFolderArgs = arrayOf(
+        "--prefix", "\"$zigOutputFolder\"",
+        "--cache-dir", "\"$zigCacheFolder\"",
+    )
+    val zigBuildArgs = arrayOf(
+        "-Doptimize=ReleaseFast", // ReleaseSafe
+        "-Dcpu=x86_64_v3",
+    )
     register<Delete>("cleanZig") {
         group = "build/zig"
         delete(
@@ -76,33 +85,47 @@ tasks {
     register<Exec>("printZigVersion") {
         group = "build/zig"
         standardOutput = ByteArrayOutputStream()
-        commandLine(
-            "zig", "version"
-        )
+        commandLine("zig", "version")
         doLast {
             val version = standardOutput.toString()
             println(version)
         }
     }
-    val buildZig = register<Exec>("buildZig") {
+    val buildZigNative = register<Exec>("buildZigNative") {
         group = "build/zig"
         commandLine(
-            "zig",
-            "build",
-            "--prefix", "\"$zigOutputFolder\"",
-            "--cache-dir", "\"$zigCacheFolder\"",
-            "-Doptimize=ReleaseFast", // ReleaseSafe
-            "-Dcpu=x86_64_v3",
-            // "-Dtarget=x86_64-windows",
+            *zigBuildExec,
+            *zigFolderArgs,
+            *zigBuildArgs,
+            "-Dtarget=x86_64-native",
         )
+        println(commandLine.joinToString(" "))
+    }
+    val buildZigCrosscompile = create("buildZigCrosscompile") {
+        group = "build/zig"
+        val targets = arrayOf(
+            "-Dtarget=x86_64-windows",
+            "-Dtarget=x86_64-linux",
+            "-Dtarget=x86_64-macos",
+        )
+        for(target in targets) {
+            exec {
+                commandLine(
+                    *zigBuildExec,
+                    *zigFolderArgs,
+                    *zigBuildArgs,
+                    target
+                )
+                println(commandLine.joinToString(" "))
+            }
+        }
     }
     register<Exec>("testZig") {
         group = "build/zig"
         commandLine(
-            "zig",
-            "build", "test",
-            "--prefix", "\"$zigOutputFolder\"",
-            "--cache-dir", "\"$zigCacheFolder\"",
+            *zigBuildExec,
+            "test",
+            *zigFolderArgs,
         )
     }
 
@@ -114,9 +137,8 @@ tasks {
         )
     }
     withType<JavaExec> {
-        dependsOn.add(buildZig)
+        dependsOn.add(buildZigNative)
 
-        println(libraryPaths)
         jvmArgs(
             "--enable-preview",
 //            "--enable-native-access=chunky.plugin.nativeoctree",
@@ -125,7 +147,7 @@ tasks {
         )
     }
     withType<Jar> {
-        dependsOn.add(buildZig)
+        dependsOn.add(buildZigCrosscompile)
 
         archiveFileName.set("${archiveBaseName.get()}.${archiveExtension.get()}")
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
