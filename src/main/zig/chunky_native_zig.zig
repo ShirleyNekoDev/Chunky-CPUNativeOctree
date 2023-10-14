@@ -1,5 +1,5 @@
 const std = @import("std");
-const packed_octree = @import("packed_octree.zig");
+const packed_octree = @import("octrees/packed_octree.zig");
 const PackedOctree = packed_octree.PackedOctree;
 
 const _version: [*:0]const u8 = "0.1.0";

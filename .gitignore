@@ -2,12 +2,17 @@ out/
 build/
 log/
 target/
+zig-cache/
 .gradle
 .gradletasknamecache
 
 *.log
 *.class
 *.jar
+*.dll
+*.dll.obj
+*.lib
+*.pdb
 
 *.war
 *.ear

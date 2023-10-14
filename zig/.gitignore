@@ -1,8 +1,0 @@
-*.dll
-*.dll.obj
-*.lib
-*.pdb
-*.kt
-zig-cache
-zig-out
-.vscode

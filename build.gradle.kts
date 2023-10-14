@@ -1,4 +1,5 @@
 import com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask
+import java.io.ByteArrayOutputStream
 
 plugins {
     java
@@ -16,13 +17,9 @@ version = "1.0-SNAPSHOT"
 // https://repo.lemaik.de/se/llbit/chunky-core/maven-metadata.xml
 val chunkyVersion = "2.5.0-SNAPSHOT"
 
-val libraryPaths =
-//    listOf(/*"release", */"debug")
-//        .map { projectDir.resolve("rust/target/$it/").absoluteFile } +
-    listOf(
-        projectDir.resolve("zig/").absoluteFile,
-//        projectDir.resolve("zig/zig-out/lib/").absoluteFile
-    )
+val libraryPaths = listOf(
+    projectDir.resolve("build/zig/out/lib/").absoluteFile,
+)
 
 repositories {
     mavenLocal()
@@ -67,7 +64,58 @@ tasks {
         }
     }
 
+    val zigOutputFolder = "build/zig/out/"
+    val zigCacheFolder = "build/zig/cache/"
+    register<Delete>("cleanZig") {
+        group = "build/zig"
+        delete(
+            zigOutputFolder,
+            zigCacheFolder,
+        )
+    }
+    register<Exec>("printZigVersion") {
+        group = "build/zig"
+        standardOutput = ByteArrayOutputStream()
+        commandLine(
+            "zig", "version"
+        )
+        doLast {
+            val version = standardOutput.toString()
+            println(version)
+        }
+    }
+    val buildZig = register<Exec>("buildZig") {
+        group = "build/zig"
+        commandLine(
+            "zig",
+            "build",
+            "--prefix", "\"$zigOutputFolder\"",
+            "--cache-dir", "\"$zigCacheFolder\"",
+            "-Doptimize=ReleaseFast", // ReleaseSafe
+            "-Dcpu=x86_64_v3",
+            // "-Dtarget=x86_64-windows",
+        )
+    }
+    register<Exec>("testZig") {
+        group = "build/zig"
+        commandLine(
+            "zig",
+            "build", "test",
+            "--prefix", "\"$zigOutputFolder\"",
+            "--cache-dir", "\"$zigCacheFolder\"",
+        )
+    }
+
+    compileJava {
+        options.compilerArgs.addAll(
+            listOf(
+                "--enable-preview",
+            )
+        )
+    }
     withType<JavaExec> {
+        dependsOn.add(buildZig)
+
         println(libraryPaths)
         jvmArgs(
             "--enable-preview",
@@ -76,14 +124,9 @@ tasks {
             "-Djava.library.path=${libraryPaths.joinToString(";") { it.path }}"
         )
     }
-    compileJava {
-        options.compilerArgs.addAll(
-            listOf(
-                "--enable-preview",
-            )
-        )
-    }
     withType<Jar> {
+        dependsOn.add(buildZig)
+
         archiveFileName.set("${archiveBaseName.get()}.${archiveExtension.get()}")
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         configurations["compileClasspath"].apply {
